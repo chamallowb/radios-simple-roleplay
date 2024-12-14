@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radios SRP</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #2c2c2c;
+            color: #fff;
+        }
+        .radio-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding: 20px;
+            justify-content: center;
+        }
+        .radio-block {
+            background-color: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+        }
+        .radio-block h2 {
+            font-size: 1.5em;
+            margin: 0 0 10px;
+        }
+        .radio-block p {
+            margin: 5px 0;
+            font-size: 1em;
+            color: #ddd;
+        }
+        .listeners {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #fff;
+            text-align: right;
+        }
+        .uptime {
+            font-size: 1em;
+            color: #aaa;
+            text-align: left;
+        }
+        .fav-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: #555;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        .fav-button.active {
+            background-color: #ff9800;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center; padding: 20px;">Radios en ligne sur Simple Roleplay</h1>
+    <div id="radioContainer" class="radio-container"></div>
+
+    <script>
+        const radioContainer = document.getElementById('radioContainer');
+        const favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+
+        function saveFavorites() {
+            localStorage.setItem('favorites', JSON.stringify(favorites));
+        }
+
+        function isFavorite(name) {
+            return favorites.includes(name);
+        }
+
+        function toggleFavorite(radioName, button) {
+            if (isFavorite(radioName)) {
+                favorites.splice(favorites.indexOf(radioName), 1);
+                button.classList.remove('active');
+            } else {
+                favorites.push(radioName);
+                button.classList.add('active');
+            }
+            saveFavorites();
+        }
+
+        function calculateUptime(startTime) {
+            const startDate = new Date(startTime);
+            const now = new Date();
+            const diffMs = now - startDate;
+            const diffMinutes = Math.floor(diffMs / 60000);
+            const hours = Math.floor(diffMinutes / 60);
+            const minutes = diffMinutes % 60;
+            return `${hours}h ${minutes}m`;
+        }
+
+        function sendNotification(radioName) {
+            if (Notification.permission === 'granted') {
+                new Notification(`La radio "${radioName}" est en ligne !`);
+            }
+        }
+
+        async function fetchRadioData() {
+            try {
+                const response = await fetch('http://radio.simple-roleplay.fr:8000/status-json.xsl');
+                const data = await response.json();
+
+                // Vérification des radios
+                const radios = data.icestats?.source;
+                if (!radios) {
+                    radioContainer.innerHTML = '<p>Aucune radio disponible.</p>';
+                    return;
+                }
+
+                // Si une seule radio est présente, la convertir en tableau
+                const radioList = Array.isArray(radios) ? radios : [radios];
+
+                // Mettre à jour l'interface utilisateur
+                radioContainer.innerHTML = '';
+                radioList.forEach(radio => {
+                    const block = document.createElement('div');
+                    block.className = 'radio-block';
+
+                    const name = document.createElement('h2');
+                    name.textContent = radio.server_name || 'Radio sans nom';
+                    block.appendChild(name);
+
+                    const favButton = document.createElement('button');
+                    favButton.className = 'fav-button';
+                    favButton.textContent = 'Favoris';
+                    if (isFavorite(radio.server_name)) {
+                        favButton.classList.add('active');
+                    }
+                    favButton.addEventListener('click', () => toggleFavorite(radio.server_name, favButton));
+                    block.appendChild(favButton);
+
+                    if (radio.title) {
+                        const title = document.createElement('p');
+                        title.textContent = `${radio.title}`;
+                        block.appendChild(title);
+                    }
+
+                    if (radio.stream_start) {
+                        const uptime = document.createElement('p');
+                        uptime.className = 'uptime';
+                        uptime.textContent = `En ligne depuis : ${calculateUptime(radio.stream_start)}`;
+                        block.appendChild(uptime);
+
+                        // Envoyer une notification si la radio est un favori
+                        if (isFavorite(radio.server_name)) {
+                            sendNotification(radio.server_name);
+                        }
+                    }
+
+                    const listeners = document.createElement('div');
+                    listeners.className = 'listeners';
+                    listeners.textContent = `${radio.listeners} auditeurs`;
+                    block.appendChild(listeners);
+
+                    radioContainer.appendChild(block);
+                });
+            } catch (error) {
+                console.error('Erreur lors de la récupération des données radio :', error);
+                radioContainer.innerHTML = '<p>Erreur lors de la récupération des données.</p>';
+            }
+        }
+
+        // Demander l'autorisation des notifications
+        if (Notification.permission !== 'granted') {
+            Notification.requestPermission();
+        }
+
+        // Rafraîchir les données toutes les secondes
+        setInterval(fetchRadioData, 1000);
+        fetchRadioData(); // Appel initial
+    </script>
+</body>
+</html>
